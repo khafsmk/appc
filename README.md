@@ -1,2 +1,3 @@
-# appc
-App generation template
+# Appc
+
+A service template with code generation

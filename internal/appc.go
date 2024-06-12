@@ -1,4 +1,4 @@
-package appc
+package internal
 
 import "context"
 

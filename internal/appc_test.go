@@ -1,4 +1,4 @@
-package appc_test
+package internal
 
 import (
 	"path/filepath"

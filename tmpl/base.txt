@@ -1,0 +1,287 @@
+-- core.go --
+package main
+
+import "time"
+
+type User struct {
+	CreatedAt time.Time `json:"created_at,format:'2006-01-02'" db:"created_at"`
+	Name      string    `json:"name" db:"name"`
+	ID        int64     `json:"id,omitzero" db:"id"`
+	Age       int       `json:"age" db:"age"`
+}
+
+type ListParam struct {
+	Limit  uint64
+	Offset uint64
+}
+
+// Link is the structure stored for each go short link.
+type Link struct {
+	Short    string // the "foo" part of http://go/foo
+	Long     string // the target URL or text/template pattern to run
+	Created  time.Time
+	LastEdit time.Time // when the link was last edited
+	Owner    string    // user@domain
+}
+
+-- db.go --
+package main
+
+import (
+	_ "embed"
+	"fmt"
+	"net/url"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jmoiron/sqlx"
+)
+
+//go:embed schema.sql
+var sqlSchema string
+
+type DB struct {
+	db *sqlx.DB
+}
+
+func NewDB(host string, port int, dbName, username, password string) (*DB, error) {
+	u := url.URL{
+		Scheme: "postgres",
+		Host:   fmt.Sprintf("%s:%d", host, port),
+		User:   url.UserPassword(username, password),
+		Path:   dbName,
+	}
+	q := u.Query()
+	q.Set("sslmode", "disable")
+	u.RawQuery = q.Encode()
+	uri := u.String()
+
+	db, err := sqlx.Open("pgx", uri)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := db.Ping(); err != nil {
+		return nil, err
+	}
+	if _, err := db.Exec(sqlSchema); err != nil {
+		return nil, err
+	}
+	return &DB{db: db}, nil
+}
+
+-- db_user.go --
+package main
+
+import (
+	"context"
+
+	"github.com/Masterminds/squirrel"
+)
+
+var sq = squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
+
+func (db *DB) CreateUser(ctx context.Context, user *User) error {
+	stmt, args, err := sq.Insert("users").
+		SetMap(map[string]any{
+			"name": user.Name,
+			"age":  user.Age,
+		}).
+		Suffix("RETURNING *").
+		ToSql()
+	if err != nil {
+		return err
+	}
+	return db.db.QueryRowxContext(ctx, stmt, args...).StructScan(user)
+}
+
+func (db *DB) ListUser(ctx context.Context, params *ListParam) ([]User, error) {
+	stmt, args, err := sq.Select("*").
+		From("users").
+		Limit(params.Limit).
+		Offset(params.Offset).
+		ToSql()
+	if err != nil {
+		return nil, err
+	}
+
+	users := make([]User, 0)
+	err = db.db.SelectContext(ctx, &users, stmt, args...)
+	return users, err
+}
+
+-- go.mod --
+module github.com/khafsmk/tpl
+
+go 1.22.2
+
+require (
+	github.com/jackc/pgx/v5 v5.6.0
+	github.com/jmoiron/sqlx v1.4.0
+)
+
+require (
+	github.com/Masterminds/squirrel v1.5.4 // indirect
+	github.com/go-json-experiment/json v0.0.0-20240524174822-2d9f40f7385b // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
+	github.com/jackc/puddle/v2 v2.2.1 // indirect
+	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
+	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
+	golang.org/x/crypto v0.17.0 // indirect
+	golang.org/x/sync v0.1.0 // indirect
+	golang.org/x/text v0.14.0 // indirect
+)
+
+-- go.sum --
+filippo.io/edwards25519 v1.1.0 h1:FNf4tywRC1HmFuKW5xopWpigGjJKiJSV0Cqo0cJWDaA=
+filippo.io/edwards25519 v1.1.0/go.mod h1:BxyFTGdWcka3PhytdK4V28tE5sGfRvvvRV7EaN4VDT4=
+github.com/Masterminds/squirrel v1.5.4 h1:uUcX/aBc8O7Fg9kaISIUsHXdKuqehiXAMQTYX8afzqM=
+github.com/Masterminds/squirrel v1.5.4/go.mod h1:NNaOrjSoIDfDA40n7sr2tPNZRfjzjA400rg+riTZj10=
+github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
+github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+github.com/go-json-experiment/json v0.0.0-20240524174822-2d9f40f7385b h1:IM96IiRXFcd7l+mU8Sys9pcggoBLbH/dEgzOESrS8F8=
+github.com/go-json-experiment/json v0.0.0-20240524174822-2d9f40f7385b/go.mod h1:uDEMZSTQMj7V6Lxdrx4ZwchmHEGdICbjuY+GQd7j9LM=
+github.com/go-sql-driver/mysql v1.8.1 h1:LedoTUt/eveggdHS9qUFC1EFSa8bU2+1pZjSRpvNJ1Y=
+github.com/go-sql-driver/mysql v1.8.1/go.mod h1:wEBSXgmK//2ZFJyE+qWnIsVGmvmEKlqwuVSjsCm7DZg=
+github.com/jackc/pgpassfile v1.0.0 h1:/6Hmqy13Ss2zCq62VdNG8tM1wchn8zjSGOBJ6icpsIM=
+github.com/jackc/pgpassfile v1.0.0/go.mod h1:CEx0iS5ambNFdcRtxPj5JhEz+xB6uRky5eyVu/W2HEg=
+github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a h1:bbPeKD0xmW/Y25WS6cokEszi5g+S0QxI/d45PkRi7Nk=
+github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a/go.mod h1:5TJZWKEWniPve33vlWYSoGYefn3gLQRzjfDlhSJ9ZKM=
+github.com/jackc/pgx/v5 v5.6.0 h1:SWJzexBzPL5jb0GEsrPMLIsi/3jOo7RHlzTjcAeDrPY=
+github.com/jackc/pgx/v5 v5.6.0/go.mod h1:DNZ/vlrUnhWCoFGxHAG8U2ljioxukquj7utPDgtQdTw=
+github.com/jackc/puddle/v2 v2.2.1 h1:RhxXJtFG022u4ibrCSMSiu5aOq1i77R3OHKNJj77OAk=
+github.com/jackc/puddle/v2 v2.2.1/go.mod h1:vriiEXHvEE654aYKXXjOvZM39qJ0q+azkZFrfEOc3H4=
+github.com/jmoiron/sqlx v1.4.0 h1:1PLqN7S1UYp5t4SrVVnt4nUVNemrDAtxlulVe+Qgm3o=
+github.com/jmoiron/sqlx v1.4.0/go.mod h1:ZrZ7UsYB/weZdl2Bxg6jCRO9c3YHl8r3ahlKmRT4JLY=
+github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 h1:SOEGU9fKiNWd/HOJuq6+3iTQz8KNCLtVX6idSoTLdUw=
+github.com/lann/builder v0.0.0-20180802200727-47ae307949d0/go.mod h1:dXGbAdH5GtBTC4WfIxhKZfyBF/HBFgRZSWwZ9g/He9o=
+github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 h1:P6pPBnrTSX3DEVR4fDembhRWSsG5rVo6hYhAB/ADZrk=
+github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0/go.mod h1:vmVJ0l/dxyfGW6FmdpVm2joNMFikkuWg0EoCKLGUMNw=
+github.com/lib/pq v1.10.9 h1:YXG7RB+JIjhP29X+OtkiDnYaXQwpS4JEWq7dtCCRUEw=
+github.com/lib/pq v1.10.9/go.mod h1:AlVN5x4E4T544tWzH6hKfbfQvm3HdbOxrmggDNAPY9o=
+github.com/mattn/go-sqlite3 v1.14.22 h1:2gZY6PC6kBnID23Tichd1K+Z0oS6nE/XwU+Vz/5o4kU=
+github.com/mattn/go-sqlite3 v1.14.22/go.mod h1:Uh1q+B4BYcTPb+yiD3kU8Ct7aC0hY9fxUwlHK0RXw+Y=
+github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
+github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
+github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
+github.com/stretchr/testify v1.2.2/go.mod h1:a8OnRcib4nhh0OaRAV+Yts87kKdq0PP7pXfy6kDkUVs=
+github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UVUgZn+9EI=
+github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
+github.com/stretchr/testify v1.8.1 h1:w7B6lhMri9wdJUVmEZPGGhZzrYTPvgJArz7wNPgYKsk=
+github.com/stretchr/testify v1.8.1/go.mod h1:w2LPCIKwWwSfY2zedu0+kehJoqGctiVI29o6fzry7u4=
+golang.org/x/crypto v0.17.0 h1:r8bRNjWL3GshPW3gkd+RpvzWrZAwPS49OmTGZ/uhM4k=
+golang.org/x/crypto v0.17.0/go.mod h1:gCAAfMLgwOJRpTjQ2zCCt2OcSfYMTeZVSRtQlPC7Nq4=
+golang.org/x/sync v0.1.0 h1:wsuoTGHzEhffawBOhz5CYhcrV4IdKZbEyZjBMuTp12o=
+golang.org/x/sync v0.1.0/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
+golang.org/x/text v0.14.0 h1:ScX5w1eTa3QqT8oi6+ziP7dTV1S2+ALU0bI+0zXKWiQ=
+golang.org/x/text v0.14.0/go.mod h1:18ZOQIKpY8NJVqYksKHtTdi31H5itFRjB5/qKTNYzSU=
+gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
+gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
+gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
+gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
+
+-- main.go --
+package main
+
+import (
+	"cmp"
+	"net/http"
+	"strconv"
+
+	"github.com/go-json-experiment/json"
+)
+
+func parserListQuery(r *http.Request) *ListParam {
+	q := r.URL.Query()
+	limit, _ := strconv.ParseUint(q.Get("limit"), 10, 64)
+	offset, _ := strconv.ParseUint(q.Get("offset"), 10, 64)
+
+	return &ListParam{
+		Limit:  cmp.Or(limit, 10),
+		Offset: cmp.Or(offset, 0),
+	}
+}
+
+func HandleListUser(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	out, err := db.ListUser(ctx, parserListQuery(r))
+	if err != nil {
+		serveError(w, http.StatusInternalServerError, err)
+		return
+	}
+	serveJSON(w, http.StatusOK, out)
+}
+
+func HandleCreateUser(w http.ResponseWriter, r *http.Request) {
+	var (
+		ctx = r.Context()
+	)
+	in := new(User)
+	if err := json.UnmarshalRead(r.Body, &in); err != nil {
+		serveError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := db.CreateUser(ctx, in); err != nil {
+		serveError(w, http.StatusInternalServerError, err)
+		return
+	}
+	serveJSON(w, http.StatusCreated, in)
+}
+
+-- main.go --
+package main
+
+
+import (
+	"flag"
+	"log"
+	"net/http"
+
+	"github.com/go-json-experiment/json"
+)
+
+func HelloServer(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte("Hello, world!"))
+}
+
+// global variable for using the database
+var db *DB
+
+func main() {
+	addr := flag.String("addr", ":8080", "http service address")
+	flag.Parse()
+	var err error
+	db, err = NewDB("localhost", 5432, "postgres", "postgres", "password")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	r := http.NewServeMux()
+	r.HandleFunc("GET /users", HandleListUser)
+	r.HandleFunc("POST /users", HandleCreateUser)
+	http.ListenAndServe(*addr, r)
+}
+
+func serveJSON(w http.ResponseWriter, status int, v any) {
+	w.WriteHeader(status)
+	w.Header().Set("Content-Type", "application/json")
+	err := json.MarshalWrite(w, v)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func serveError(w http.ResponseWriter, status int, err error) {
+	serveJSON(w, status, map[string]string{"error": err.Error()})
+}
+
+
+-- schema.sql --
+CREATE TABLE IF NOT EXISTS users (
+    id serial PRIMARY KEY,
+    name varchar(255) NOT NULL,
+    age bigint NOT NULL,
+    created_at timestamp DEFAULT CURRENT_TIMESTAMP
+);
+

@@ -1,9 +1,24 @@
 -- core.go --
 package main
 
+import (
+	"net/http"
+	"strconv"
+	"time"
+)
+
 type ListParam struct {
 	Limit  uint64
 	Offset uint64
+}
+
+func parseListQuery(r *http.Request) *ListParam {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	return &ListParam{
+		Limit:  uint64(limit),
+		Offset: uint64(offset),
+	}
 }
 
 -- routes.go --

@@ -57,7 +57,7 @@ func GenHandler(structName string) ([]byte, error) {
 	// handle list
 	s("func HandleList" + structName + "(w http.ResponseWriter, r *http.Request) {")
 	s("ctx := r.Context()")
-	s("out, err := db.List" + structName + "(ctx, parserListQuery(r))")
+	s("out, err := db.List" + structName + "(ctx, parseListQuery(r))")
 	s("if err != nil {")
 	s("serveError(w, http.StatusInternalServerError, err)")
 	s("return")

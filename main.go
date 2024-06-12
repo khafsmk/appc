@@ -1,20 +1,8 @@
 package main
 
-import (
-	"fmt"
-
-	"github.com/rogpeppe/go-internal/txtar"
-)
+import "github.com/khafsmk/appc/cmd"
 
 func main() {
-	// cmd.Execute()
-	archive, err := txtar.ParseFile("./tpl/tpl.txt")
-	if err != nil {
-		panic(err)
-	}
+	cmd.Execute()
 
-	for _, file := range archive.Files {
-		fmt.Printf("file.Name: %v\n", file.Name)
-		fmt.Printf("file.Data: %v\n", string(file.Data))
-	}
 }

@@ -1,27 +1,20 @@
 -- core.go --
 package main
 
-import "time"
-
-type User struct {
-	CreatedAt time.Time `json:"created_at,format:'2006-01-02'" db:"created_at"`
-	Name      string    `json:"name" db:"name"`
-	ID        int64     `json:"id,omitzero" db:"id"`
-	Age       int       `json:"age" db:"age"`
-}
-
 type ListParam struct {
 	Limit  uint64
 	Offset uint64
 }
 
-// Link is the structure stored for each go short link.
-type Link struct {
-	Short    string // the "foo" part of http://go/foo
-	Long     string // the target URL or text/template pattern to run
-	Created  time.Time
-	LastEdit time.Time // when the link was last edited
-	Owner    string    // user@domain
+-- routes.go --
+package main
+
+import "net/http"
+
+func routes() *http.ServeMux {
+	r := http.NewServeMux()
+	// TODO: Implement the routes
+	return r
 }
 
 -- db.go --
@@ -34,10 +27,14 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
+	"github.com/Masterminds/squirrel"
 )
 
 //go:embed schema.sql
 var sqlSchema string
+
+var sq = squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
+
 
 type DB struct {
 	db *sqlx.DB
@@ -69,45 +66,6 @@ func NewDB(host string, port int, dbName, username, password string) (*DB, error
 	return &DB{db: db}, nil
 }
 
--- db_user.go --
-package main
-
-import (
-	"context"
-
-	"github.com/Masterminds/squirrel"
-)
-
-var sq = squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
-
-func (db *DB) CreateUser(ctx context.Context, user *User) error {
-	stmt, args, err := sq.Insert("users").
-		SetMap(map[string]any{
-			"name": user.Name,
-			"age":  user.Age,
-		}).
-		Suffix("RETURNING *").
-		ToSql()
-	if err != nil {
-		return err
-	}
-	return db.db.QueryRowxContext(ctx, stmt, args...).StructScan(user)
-}
-
-func (db *DB) ListUser(ctx context.Context, params *ListParam) ([]User, error) {
-	stmt, args, err := sq.Select("*").
-		From("users").
-		Limit(params.Limit).
-		Offset(params.Offset).
-		ToSql()
-	if err != nil {
-		return nil, err
-	}
-
-	users := make([]User, 0)
-	err = db.db.SelectContext(ctx, &users, stmt, args...)
-	return users, err
-}
 
 -- go.mod --
 module github.com/khafsmk/tpl
@@ -203,31 +161,6 @@ func parserListQuery(r *http.Request) *ListParam {
 	}
 }
 
-func HandleListUser(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	out, err := db.ListUser(ctx, parserListQuery(r))
-	if err != nil {
-		serveError(w, http.StatusInternalServerError, err)
-		return
-	}
-	serveJSON(w, http.StatusOK, out)
-}
-
-func HandleCreateUser(w http.ResponseWriter, r *http.Request) {
-	var (
-		ctx = r.Context()
-	)
-	in := new(User)
-	if err := json.UnmarshalRead(r.Body, &in); err != nil {
-		serveError(w, http.StatusBadRequest, err)
-		return
-	}
-	if err := db.CreateUser(ctx, in); err != nil {
-		serveError(w, http.StatusInternalServerError, err)
-		return
-	}
-	serveJSON(w, http.StatusCreated, in)
-}
 
 -- main.go --
 package main
@@ -257,9 +190,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	r := http.NewServeMux()
-	r.HandleFunc("GET /users", HandleListUser)
-	r.HandleFunc("POST /users", HandleCreateUser)
+	r := routes()
 	http.ListenAndServe(*addr, r)
 }
 

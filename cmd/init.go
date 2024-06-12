@@ -2,7 +2,10 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"path"
 
+	"github.com/khafsmk/appc/tmpl"
 	"github.com/spf13/cobra"
 )
 
@@ -12,13 +15,22 @@ var (
 		Aliases: []string{"create"},
 		Short:   "Initialize a web project",
 		Run: func(cmd *cobra.Command, args []string) {
-			path, err := initProject(args)
+			_, err := initProject(args)
 			cobra.CheckErr(err)
-			fmt.Printf("Project initialized at %s\n", path)
 		},
 	}
 )
 
 func initProject(args []string) (string, error) {
-	return "", nil
+	if len(args) < 1 {
+		return "", fmt.Errorf("directory is required")
+	}
+	base := args[0]
+	if err := os.MkdirAll(base, os.ModePerm); err != nil {
+		return "", fmt.Errorf("create directory %q failed: %w", base, err)
+	}
+	if err := tmpl.Gen(base); err != nil {
+		return "", fmt.Errorf("generate project failed: %w", err)
+	}
+	return path.Join(base, base), nil
 }

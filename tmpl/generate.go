@@ -54,6 +54,8 @@ func GenHandler(structName string) ([]byte, error) {
 	s("}")
 	s("")
 
+	s("")
+
 	// handle list
 	s("func HandleList" + structName + "(w http.ResponseWriter, r *http.Request) {")
 	s("ctx := r.Context()")
@@ -102,6 +104,8 @@ func GenDB(table string, structName string, columns []string, fields []string) (
 	s("}")
 	s("return db.db.QueryRowxContext(ctx, stmt, args...).StructScan(in)")
 	s("}")
+
+	s("")
 
 	// list
 	s("func (db *DB) List" + structName + "(ctx context.Context, params *ListParam) ([]" + structName + ", error) {")

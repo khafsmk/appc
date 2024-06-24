@@ -7,6 +7,8 @@ import (
 	"go/parser"
 	"go/printer"
 	"go/token"
+	"io"
+	"log"
 	"os"
 	"path"
 	"reflect"
@@ -81,6 +83,12 @@ func generate(args []string) error {
 	}
 
 	return nil
+}
+
+func writeTo(w io.Writer, b []byte) {
+	if _, err := w.Write(b); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func appendSeed(source []byte, modelFile string) error {

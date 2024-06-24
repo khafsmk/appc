@@ -2,11 +2,11 @@ package main
 
 import "time"
 
-// User is a struct that represents a user
-// TableName: users
-type User struct {
+// Loan is a struct that represents a loan in this system.
+// TableName: dt_m_loan
+type Loan struct {
 	CreatedAt time.Time `json:"created_at,format:'2006-01-02'" db:"created_at"`
-	Name      string    `json:"name" db:"name"`
+	Code      string    `json:"name" db:"code"`
 	ID        int64     `json:"id,omitzero" db:"id"`
-	Age       int       `json:"age" db:"age"`
+	Amount    int       `json:"age" db:"age"`
 }
